@@ -288,7 +288,7 @@ func (s *Service) runRepoOperation(
 	source *v1alpha1.ApplicationSource,
 	verifyCommit bool,
 	cacheFn func(cacheKey string, refSourceCommitSHAs cache.ResolvedRevisions, firstInvocation bool) (bool, error),
-	operation func(repoRoot, commitSHA, cacheKey string, ctxSrc operationContextSrc) error,
+	operation func(repoRoot, commitSHA, cacheKey string, isGenerateManifest bool, ctxSrc operationContextSrc) error,
 	settings operationSettings,
 	hasMultipleSources bool,
 	refSources map[string]*v1alpha1.RefTarget) error {
@@ -342,7 +342,9 @@ func (s *Service) runRepoOperation(
 		log.WithFields(map[string]interface{}{
 			"source": source,
 		}).Debugf("not generating manifests as path and chart fields are empty")
-		return nil
+		return operation("", revision, revision, false, func() (*operationContext, error) {
+			return &operationContext{"", ""}, nil
+		})
 	}
 
 	if source.IsHelm() {
@@ -378,7 +380,7 @@ func (s *Service) runRepoOperation(
 				}
 			}
 		}
-		return operation(chartPath, revision, revision, func() (*operationContext, error) {
+		return operation(chartPath, revision, revision, true, func() (*operationContext, error) {
 			return &operationContext{chartPath, ""}, nil
 		})
 	} else {
@@ -424,7 +426,7 @@ func (s *Service) runRepoOperation(
 
 		// Here commitSHA refers to the SHA of the actual commit, whereas revision refers to the branch/tag name etc
 		// We use the commitSHA to generate manifests and store them in cache, and revision to retrieve them from cache
-		return operation(gitClient.Root(), commitSHA, revision, func() (*operationContext, error) {
+		return operation(gitClient.Root(), commitSHA, revision, true, func() (*operationContext, error) {
 			var signature string
 			if verifyCommit {
 				signature, err = gitClient.VerifyCommitSignature(unresolvedRevision)
@@ -509,7 +511,14 @@ func (s *Service) GenerateManifest(ctx context.Context, q *apiclient.ManifestReq
 	tarConcluded := false
 	var promise *ManifestResponsePromise
 
-	operation := func(repoRoot, commitSHA, cacheKey string, ctxSrc operationContextSrc) error {
+	operation := func(repoRoot, commitSHA, cacheKey string, isGenerateManifest bool, ctxSrc operationContextSrc) error {
+		if !isGenerateManifest {
+			res = &apiclient.ManifestResponse{
+				Revision: commitSHA,
+			}
+			return nil
+		}
+
 		promise = s.runManifestGen(ctx, repoRoot, commitSHA, cacheKey, ctxSrc, q)
 		// The fist channel to send the message will resume this operation.
 		// The main purpose for using channels here is to be able to unlock
@@ -543,9 +552,6 @@ func (s *Service) GenerateManifest(ctx context.Context, q *apiclient.ManifestReq
 		}
 	}
 
-	if q.HasMultipleSources && err == nil && res == nil {
-		res = &apiclient.ManifestResponse{}
-	}
 	return res, err
 }
 
@@ -1980,7 +1986,11 @@ func (s *Service) GetAppDetails(ctx context.Context, q *apiclient.RepoServerAppD
 	res := &apiclient.RepoAppDetailsResponse{}
 
 	cacheFn := s.createGetAppDetailsCacheHandler(res, q)
-	operation := func(repoRoot, commitSHA, revision string, ctxSrc operationContextSrc) error {
+	operation := func(repoRoot, commitSHA, revision string, isGenerateManifest bool, ctxSrc operationContextSrc) error {
+		if !isGenerateManifest {
+			return nil
+		}
+
 		opContext, err := ctxSrc()
 		if err != nil {
 			return err
