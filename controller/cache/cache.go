@@ -282,7 +282,11 @@ func isRootAppNode(r *clustercache.Resource) bool {
 }
 
 func getApp(r *clustercache.Resource, ns map[kube.ResourceKey]*clustercache.Resource) string {
-	return getAppRecursive(r, ns, map[kube.ResourceKey]bool{})
+	return getAppRecursive(r, ns, map[kube.ResourceKey]bool{}, false)
+}
+
+func getAppForChildUpdate(r *clustercache.Resource, ns map[kube.ResourceKey]*clustercache.Resource) string {
+	return getAppRecursive(r, ns, map[kube.ResourceKey]bool{}, true)
 }
 
 func ownerRefGV(ownerRef metav1.OwnerReference) schema.GroupVersion {
@@ -293,7 +297,7 @@ func ownerRefGV(ownerRef metav1.OwnerReference) schema.GroupVersion {
 	return gv
 }
 
-func getAppRecursive(r *clustercache.Resource, ns map[kube.ResourceKey]*clustercache.Resource, visited map[kube.ResourceKey]bool) string {
+func getAppRecursive(r *clustercache.Resource, ns map[kube.ResourceKey]*clustercache.Resource, visited map[kube.ResourceKey]bool, respectUpdateNotations bool) string {
 	if !visited[r.ResourceKey()] {
 		visited[r.ResourceKey()] = true
 	} else {
@@ -307,11 +311,11 @@ func getAppRecursive(r *clustercache.Resource, ns map[kube.ResourceKey]*clusterc
 	for _, ownerRef := range r.OwnerRefs {
 		gv := ownerRefGV(ownerRef)
 		if parent, ok := ns[kube.NewResourceKey(gv.Group, ownerRef.Kind, r.Ref.Namespace, ownerRef.Name)]; ok {
-			if resInfo(parent).ignoreChildResourceUpdates {
+			if respectUpdateNotations && resInfo(parent).ignoreChildResourceUpdates {
 				continue
 			}
 
-			app := getAppRecursive(parent, ns, visited)
+			app := getAppRecursive(parent, ns, visited, respectUpdateNotations)
 			if app != "" {
 				return app
 			}
@@ -535,7 +539,7 @@ func (c *liveStateCache) getCluster(server string) (clustercache.ClusterCache, e
 			if r == nil {
 				continue
 			}
-			app := getApp(r, namespaceResources)
+			app := getAppForChildUpdate(r, namespaceResources)
 			if app == "" || skipAppRequeuing(r.ResourceKey()) {
 				continue
 			}
