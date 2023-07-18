@@ -152,6 +152,8 @@ type ResourceInfo struct {
 	NodeInfo *NodeInfo
 
 	manifestHash string
+
+	ignoreChildResourceUpdates bool
 }
 
 func NewLiveStateCache(
@@ -305,6 +307,10 @@ func getAppRecursive(r *clustercache.Resource, ns map[kube.ResourceKey]*clusterc
 	for _, ownerRef := range r.OwnerRefs {
 		gv := ownerRefGV(ownerRef)
 		if parent, ok := ns[kube.NewResourceKey(gv.Group, ownerRef.Kind, r.Ref.Namespace, ownerRef.Name)]; ok {
+			if resInfo(parent).ignoreChildResourceUpdates {
+				continue
+			}
+
 			app := getAppRecursive(parent, ns, visited)
 			if app != "" {
 				return app
@@ -480,6 +486,8 @@ func (c *liveStateCache) getCluster(server string) (clustercache.ClusterCache, e
 					res.manifestHash = hash
 				}
 			}
+
+			res.ignoreChildResourceUpdates = un.GetAnnotations()["argocd.argoproj.io/ignoreChildResourceUpdates"] == "true"
 
 			// edge case. we do not label CRDs, so they miss the tracking label we inject. But we still
 			// want the full resource to be available in our cache (to diff), so we store all CRDs
