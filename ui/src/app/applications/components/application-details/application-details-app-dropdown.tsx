@@ -4,7 +4,7 @@ import * as React from 'react';
 import {Context} from '../../../shared/context';
 import {services} from '../../../shared/services';
 
-export const ApplicationsDetailsAppDropdown = (props: {appName: string}) => {
+export const ApplicationsDetailsAppDropdown = (props: {appName: string, appNamespace: string}) => {
     const [opened, setOpened] = React.useState(false);
     const [appFilter, setAppFilter] = React.useState('');
     const ctx = React.useContext(Context);
@@ -14,7 +14,7 @@ export const ApplicationsDetailsAppDropdown = (props: {appName: string}) => {
             isMenu={true}
             anchor={() => (
                 <>
-                    <i className='fa fa-search' /> <span>{props.appName}</span>
+                    <i className='fa fa-search' /> <span>{`${props.appNamespace}/`}{props.appName}</span>
                 </>
             )}>
             {opened && (
@@ -42,8 +42,8 @@ export const ApplicationsDetailsAppDropdown = (props: {appName: string}) => {
                                 })
                                 .slice(0, 100) // take top 100 results after filtering to avoid performance issues
                                 .map(app => (
-                                    <li key={app.metadata.name} onClick={() => ctx.navigation.goto(`/applications/${app.metadata.namespace}/${app.metadata.name}`)}>
-                                        {app.metadata.name} {app.metadata.name === props.appName && ' (current)'}
+                                    <li key={`${app.metadata.namespace}/${app.metadata.name}`} onClick={() => ctx.navigation.goto(`/applications/${app.metadata.namespace}/${app.metadata.name}`)}>
+                                        {`${app.metadata.namespace}/`}{app.metadata.name} {app.metadata.name === props.appName && app.metadata.namespace === props.appNamespace && ' (current)'}
                                     </li>
                                 ))
                         }
